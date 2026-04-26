@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
-const { sendOrderConfirmation, sendStatusUpdateEmail } = require('../utils/sendEmail');
+const { sendOrderReceivedEmail, sendStatusUpdateEmail } = require('../utils/sendEmail');
 
 // @desc    Create order (public)
 // @route   POST /api/orders
@@ -34,10 +34,10 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // ✅ Send order confirmation email (only if customer provided email)
+  // ✅ Order received email — jab customer order place kare
   if (order.customer?.email) {
-    sendOrderConfirmation(order).catch((err) =>
-      console.error('❌ Confirmation email failed:', err.message)
+    sendOrderReceivedEmail(order).catch((err) =>
+      console.error('❌ Order received email failed:', err.message)
     );
   }
 
@@ -82,15 +82,14 @@ const updateStatus = asyncHandler(async (req, res) => {
   order.status = status;
   await order.save();
 
-  // ✅ Send email only when status actually changes to shipped or delivered
-  const notifiable = ['shipped', 'delivered'];
-  if (previousStatus !== status && notifiable.includes(status)) {
+  // ✅ Email sirf tab jayegi jab status actually change hua ho
+  if (previousStatus !== status) {
     if (order.customer?.email) {
       sendStatusUpdateEmail(order).catch((err) =>
         console.error(`❌ Status email [${status}] failed:`, err.message)
       );
     } else {
-      console.log(`ℹ️  No email on file for order #${String(order._id).slice(-8)} — skipping`);
+      console.log(`ℹ️  No email for order ${order.orderNumber} — skipping notification`);
     }
   }
 
@@ -114,13 +113,12 @@ const deleteOrder = asyncHandler(async (req, res) => {
 // @route   GET /api/orders/stats/dashboard
 // @access  Private/Admin
 const getDashboardStats = asyncHandler(async (req, res) => {
-  const totalOrders = await Order.countDocuments();
-  const pendingOrders = await Order.countDocuments({ status: 'pending' });
+  const totalOrders     = await Order.countDocuments();
+  const pendingOrders   = await Order.countDocuments({ status: 'pending' });
   const deliveredOrders = await Order.countDocuments({ status: 'delivered' });
-  const totalProducts = await Product.countDocuments();
-  const activeProducts = await Product.countDocuments({ isActive: true });
+  const totalProducts   = await Product.countDocuments();
+  const activeProducts  = await Product.countDocuments({ isActive: true });
 
-  // Revenue from delivered + shipped orders
   const revenueAgg = await Order.aggregate([
     { $match: { status: { $in: ['delivered', 'shipped'] } } },
     { $group: { _id: null, total: { $sum: '$total' } } },
@@ -131,14 +129,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    stats: {
-      totalOrders,
-      pendingOrders,
-      deliveredOrders,
-      totalProducts,
-      activeProducts,
-      revenue,
-    },
+    stats: { totalOrders, pendingOrders, deliveredOrders, totalProducts, activeProducts, revenue },
     recentOrders,
   });
 });
