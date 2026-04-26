@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const { sendOrderConfirmation } = require('../utils/sendEmail');
 
 // @desc    Create order (public)
 // @route   POST /api/orders
@@ -32,6 +33,9 @@ const createOrder = asyncHandler(async (req, res) => {
       });
     }
   }
+
+  // ✅ Order confirmation email (fail hone pe order response nahi rukega)
+  sendOrderConfirmation(order).catch(err => console.error('Email error:', err));
 
   res.status(201).json({ success: true, order });
 });
